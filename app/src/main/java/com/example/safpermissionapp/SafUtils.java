@@ -5,7 +5,6 @@ import android.content.Intent;
 import android.content.UriPermission;
 import android.net.Uri;
 import android.os.Build;
-import android.os.Environment;
 import android.provider.DocumentsContract;
 
 import androidx.annotation.NonNull;
@@ -95,6 +94,10 @@ public class SafUtils {
     public static Intent createSafIntent(String packageName, String path) {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
 
+        // Force advanced document picker UI for Android 14
+        intent.putExtra("android.content.extra.SHOW_ADVANCED", true);
+        intent.putExtra("android.provider.extra.SHOW_ADVANCED", true);
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Uri initialUri = buildTargetUri(packageName, path);
             intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, initialUri);
@@ -104,16 +107,21 @@ public class SafUtils {
     }
 
     private static Uri buildTargetUri(String packageName, String path) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { // Android 11+
             String volumeName = "primary";
             String documentId = "Android/data/" + packageName + "/" + path;
 
-            // Use buildTreeDocumentUri instead of buildDocumentUri
-            return DocumentsContract.buildTreeDocumentUri(
+            // Build document URI first
+            Uri documentUri = DocumentsContract.buildDocumentUri(
                     "com.android.externalstorage.documents",
                     volumeName + ":" + documentId
             );
+
+            // Convert to tree URI format for directory access
+            String treeUriString = documentUri.toString().replace("/document/", "/tree/");
+            return Uri.parse(treeUriString);
         } else {
+            // For older Android versions, just navigate to Android/data folder
             return Uri.parse("content://com.android.externalstorage.documents/tree/primary:Android%2Fdata");
         }
     }

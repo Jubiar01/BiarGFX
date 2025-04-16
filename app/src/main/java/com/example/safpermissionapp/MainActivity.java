@@ -1,5 +1,6 @@
 package com.example.safpermissionapp;
 
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.UriPermission;
 import android.net.Uri;
@@ -7,16 +8,17 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.DocumentsContract;
+import android.provider.Settings;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.documentfile.provider.DocumentFile;
 
+import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.List;
@@ -25,7 +27,10 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String ML_PACKAGE = "com.mobile.legends";
     private static final String TARGET_PATH = "files/dragon2017/assets";
+    private static final int REQUEST_MANAGE_ALL_FILES = 100;
+
     private TextView statusTextView;
+    private Button allFilesAccessButton;
     private Button requestButton;
     private Button accessButton;
     private Uri targetUri = null;
@@ -47,56 +52,155 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         statusTextView = findViewById(R.id.statusTextView);
+        allFilesAccessButton = findViewById(R.id.allFilesAccessButton);
         requestButton = findViewById(R.id.requestButton);
         accessButton = findViewById(R.id.accessButton);
 
+        allFilesAccessButton.setOnClickListener(v -> requestAllFilesAccess());
         requestButton.setOnClickListener(v -> requestSafPermission());
         accessButton.setOnClickListener(v -> accessFiles());
 
+        // Initial state based on permissions
+        checkPermissions();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        checkPermissions();
+    }
+
+    private void checkPermissions() {
+        // First check if we have All Files Access permission (Android 11+)
+        if (hasAllFilesAccessPermission()) {
+            statusTextView.setText("All Files Access permission granted. You can access all files.");
+            allFilesAccessButton.setEnabled(false);
+            requestButton.setEnabled(false);
+            accessButton.setEnabled(true);
+            return;
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            allFilesAccessButton.setEnabled(true);
+        } else {
+            allFilesAccessButton.setEnabled(false);
+        }
+
+        // If not, check for SAF permissions
         checkExistingPermissions();
+    }
+
+    private boolean hasAllFilesAccessPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return Environment.isExternalStorageManager();
+        }
+        return false;
+    }
+
+    private void requestAllFilesAccess() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                new AlertDialog.Builder(this)
+                        .setTitle("All Files Access")
+                        .setMessage("This app needs permission to access all files on your device to read Mobile Legends files. Please grant 'Allow access to manage all files' on the next screen.")
+                        .setPositiveButton("Continue", (dialog, which) -> {
+                            Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                            Uri uri = Uri.fromParts("package", getPackageName(), null);
+                            intent.setData(uri);
+                            startActivity(intent);
+                        })
+                        .setNegativeButton("Cancel", null)
+                        .show();
+            } catch (Exception e) {
+                // If settings screen not available, fall back to SAF
+                statusTextView.setText("Could not open All Files Access settings: " + e.getMessage());
+                Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     private void checkExistingPermissions() {
         List<UriPermission> permissions = getContentResolver().getPersistedUriPermissions();
         for (UriPermission permission : permissions) {
             Uri uri = permission.getUri();
-            if (uri.toString().contains(ML_PACKAGE) && uri.toString().contains(TARGET_PATH)) {
+            if (uri.toString().contains(ML_PACKAGE) &&
+                    (uri.toString().contains(TARGET_PATH) || isParentOf(uri, ML_PACKAGE, TARGET_PATH))) {
                 targetUri = uri;
-                statusTextView.setText("Permission already granted");
+                statusTextView.setText("SAF Permission already granted");
                 accessButton.setEnabled(true);
                 return;
             }
         }
-        statusTextView.setText("Permission not granted");
+        statusTextView.setText("No permissions granted. Please choose one of the permission methods above.");
         accessButton.setEnabled(false);
+    }
+
+    private boolean isParentOf(Uri uri, String packageName, String path) {
+        try {
+            DocumentFile docFile = DocumentFile.fromTreeUri(this, uri);
+            if (docFile == null) return false;
+
+            // Check if it contains the package name
+            String uriString = uri.toString().toLowerCase();
+            if (!uriString.contains(packageName.toLowerCase())) {
+                return false;
+            }
+
+            // Now check if we can navigate to the target path
+            String[] segments = path.split("/");
+            DocumentFile current = docFile;
+
+            for (String segment : segments) {
+                if (segment.isEmpty()) continue;
+
+                boolean found = false;
+                for (DocumentFile child : current.listFiles()) {
+                    if (child.isDirectory() &&
+                            child.getName() != null &&
+                            child.getName().equalsIgnoreCase(segment)) {
+                        current = child;
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) return false;
+            }
+
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private void requestSafPermission() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Uri initialUri = buildTargetDirectoryUri();
+        // Force advanced document picker UI
+        intent.putExtra("android.content.extra.SHOW_ADVANCED", true);
+        intent.putExtra("android.provider.extra.SHOW_ADVANCED", true);
+
+        // Android 13+ specific flags to show all files
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.putExtra("android.provider.extra.INITIAL_URI", buildAndroidDataUri());
+        }
+
+        // For Android 10 and 11, attempt to set initial URI
+        else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            Uri initialUri = buildAndroidDataUri();
             intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, initialUri);
         }
 
         safLauncher.launch(intent);
     }
 
-    private Uri buildTargetDirectoryUri() {
-        Uri baseUri;
+    private Uri buildAndroidDataUri() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            String volumeName = "primary";
-            String documentId = "Android/data/" + ML_PACKAGE + "/" + TARGET_PATH;
-
-            // Use buildTreeDocumentUri instead of buildDocumentUri
-            baseUri = DocumentsContract.buildTreeDocumentUri(
+            // Focus on Android/data folder
+            return DocumentsContract.buildDocumentUri(
                     "com.android.externalstorage.documents",
-                    volumeName + ":" + documentId
+                    "primary:Android/data"
             );
-        } else {
-            baseUri = Uri.parse("content://com.android.externalstorage.documents/tree/primary:Android%2Fdata");
         }
-        return baseUri;
+        return null;
     }
 
     private void handleSafResult(Intent data) {
@@ -106,74 +210,239 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        if (!isCorrectDirectory(treeUri)) {
-            statusTextView.setText("Selected wrong directory. Please select the Mobile Legends assets directory.");
-            return;
+        // Debug: Show the received URI
+        statusTextView.setText("Received URI: " + treeUri.toString());
+
+        try {
+            // Take persistable permissions
+            getContentResolver().takePersistableUriPermission(treeUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+
+            targetUri = treeUri;
+
+            // Navigate to find the correct directory
+            DocumentFile docFile = DocumentFile.fromTreeUri(this, treeUri);
+            statusTextView.setText(statusTextView.getText() + "\nNavigating from selected directory...");
+
+            // If we need to navigate to the ML directory (user selected parent folder)
+            if (!treeUri.toString().contains(ML_PACKAGE) || !treeUri.toString().contains(TARGET_PATH)) {
+                statusTextView.setText(statusTextView.getText() +
+                        "\nSelected directory doesn't directly contain the target path." +
+                        "\nAttempting to navigate to: " + ML_PACKAGE + "/" + TARGET_PATH);
+
+                // Try to navigate to the correct directory
+                DocumentFile mlDir = navigateToTargetDirectory(docFile, ML_PACKAGE, TARGET_PATH);
+                if (mlDir != null) {
+                    statusTextView.setText(statusTextView.getText() +
+                            "\nSuccessfully found target directory!");
+                    accessButton.setEnabled(true);
+                } else {
+                    statusTextView.setText(statusTextView.getText() +
+                            "\nCould not find the exact target directory, but continuing with selected directory." +
+                            "\nPlease make sure you selected Android/data or a parent of " + ML_PACKAGE + "/" + TARGET_PATH);
+                    accessButton.setEnabled(true);
+                }
+            } else {
+                statusTextView.setText("Permission granted successfully for exact target directory");
+                accessButton.setEnabled(true);
+            }
+
+        } catch (SecurityException e) {
+            statusTextView.setText("Failed to take persistable permission: " + e.getMessage());
         }
-
-        getContentResolver().takePersistableUriPermission(treeUri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-
-        targetUri = treeUri;
-        statusTextView.setText("Permission granted successfully");
-        accessButton.setEnabled(true);
     }
 
-    private boolean isCorrectDirectory(Uri treeUri) {
-        String uriPath = treeUri.toString().toLowerCase();
-        return uriPath.contains(ML_PACKAGE.toLowerCase()) &&
-                (uriPath.contains(TARGET_PATH.toLowerCase()) ||
-                        isParentDirectory(treeUri));
-    }
+    private DocumentFile navigateToTargetDirectory(DocumentFile rootDir, String packageName, String targetPath) {
+        try {
+            if (rootDir == null || !rootDir.exists() || !rootDir.isDirectory()) {
+                return null;
+            }
 
-    private boolean isParentDirectory(Uri treeUri) {
-        DocumentFile directory = DocumentFile.fromTreeUri(this, treeUri);
-        if (directory == null) return false;
+            // First, try to find the package directory
+            DocumentFile packageDir = null;
 
-        String[] pathSegments = TARGET_PATH.split("/");
-        DocumentFile currentDir = directory;
-
-        for (String segment : pathSegments) {
-            boolean found = false;
-            DocumentFile[] files = currentDir.listFiles();
-            for (DocumentFile file : files) {
-                if (file.getName() != null && file.getName().equalsIgnoreCase(segment)) {
-                    currentDir = file;
-                    found = true;
+            // If we're already in Android/data, look for the package
+            for (DocumentFile file : rootDir.listFiles()) {
+                if (file.isDirectory() && file.getName() != null &&
+                        file.getName().equalsIgnoreCase(packageName)) {
+                    packageDir = file;
                     break;
                 }
             }
-            if (!found) return false;
+
+            // If we didn't find it, maybe we need to navigate to Android/data first
+            if (packageDir == null) {
+                // Try to find Android directory
+                DocumentFile androidDir = null;
+                for (DocumentFile file : rootDir.listFiles()) {
+                    if (file.isDirectory() && file.getName() != null &&
+                            file.getName().equalsIgnoreCase("Android")) {
+                        androidDir = file;
+                        break;
+                    }
+                }
+
+                // If found Android, look for data
+                if (androidDir != null) {
+                    DocumentFile dataDir = null;
+                    for (DocumentFile file : androidDir.listFiles()) {
+                        if (file.isDirectory() && file.getName() != null &&
+                                file.getName().equalsIgnoreCase("data")) {
+                            dataDir = file;
+                            break;
+                        }
+                    }
+
+                    // If found data, look for package
+                    if (dataDir != null) {
+                        for (DocumentFile file : dataDir.listFiles()) {
+                            if (file.isDirectory() && file.getName() != null &&
+                                    file.getName().equalsIgnoreCase(packageName)) {
+                                packageDir = file;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If we found the package directory, navigate to the target path
+            if (packageDir != null) {
+                String[] segments = targetPath.split("/");
+                DocumentFile currentDir = packageDir;
+
+                for (String segment : segments) {
+                    if (segment.isEmpty()) continue;
+
+                    DocumentFile nextDir = null;
+                    for (DocumentFile file : currentDir.listFiles()) {
+                        if (file.isDirectory() && file.getName() != null &&
+                                file.getName().equalsIgnoreCase(segment)) {
+                            nextDir = file;
+                            break;
+                        }
+                    }
+
+                    if (nextDir == null) return currentDir; // Return as far as we got
+                    currentDir = nextDir;
+                }
+
+                return currentDir;
+            }
+
+            return null;
+        } catch (Exception e) {
+            statusTextView.setText(statusTextView.getText() + "\nError navigating: " + e.getMessage());
+            return null;
         }
-        return true;
     }
 
     private void accessFiles() {
-        if (targetUri == null) {
-            statusTextView.setText("No permission granted");
-            return;
+        StringBuilder output = new StringBuilder();
+
+        // If we have All Files Access, use direct file access
+        if (hasAllFilesAccessPermission()) {
+            output.append("Using All Files Access permission\n\n");
+            accessWithAllFilesPermission(output);
+        }
+        // Otherwise use SAF
+        else if (targetUri != null) {
+            output.append("Using SAF permission\n\n");
+            accessWithSafPermission(output);
+        }
+        else {
+            output.append("No permissions granted. Please request permission first.");
         }
 
-        DocumentFile directory = DocumentFile.fromTreeUri(this, targetUri);
-        if (directory == null || !directory.exists()) {
-            statusTextView.setText("Directory not found or permission revoked");
-            return;
+        statusTextView.setText(output.toString());
+    }
+
+    private void accessWithAllFilesPermission(StringBuilder output) {
+        try {
+            // Direct path to ML directory
+            String directPath = Environment.getExternalStorageDirectory().getPath()
+                    + "/Android/data/" + ML_PACKAGE + "/" + TARGET_PATH;
+
+            File directory = new File(directPath);
+
+            if (!directory.exists()) {
+                output.append("Directory does not exist: ").append(directPath);
+                return;
+            }
+
+            if (!directory.canRead()) {
+                output.append("Cannot read directory: ").append(directPath);
+                return;
+            }
+
+            File[] files = directory.listFiles();
+            if (files == null || files.length == 0) {
+                output.append("Directory is empty or cannot list files");
+                return;
+            }
+
+            output.append("Files in directory:\n");
+            for (File file : files) {
+                String type = file.isDirectory() ? "[DIR] " : "[FILE] ";
+                output.append(type).append(file.getName()).append("\n");
+            }
+
+            Toast.makeText(this, "Successfully accessed files", Toast.LENGTH_SHORT).show();
+
+        } catch (Exception e) {
+            output.append("Error accessing files: ").append(e.getMessage());
         }
+    }
 
-        StringBuilder fileList = new StringBuilder("Files in directory:\n");
-        DocumentFile[] files = directory.listFiles();
+    private void accessWithSafPermission(StringBuilder output) {
+        try {
+            DocumentFile directory = DocumentFile.fromTreeUri(this, targetUri);
 
-        if (files.length == 0) {
-            statusTextView.setText("Directory is empty");
-            return;
+            if (directory == null) {
+                output.append("Directory not found (null reference)");
+                return;
+            }
+
+            if (!directory.exists()) {
+                output.append("Directory does not exist");
+                return;
+            }
+
+            if (!directory.canRead()) {
+                output.append("Cannot read directory");
+                return;
+            }
+
+            // Try to navigate to the exact target directory if needed
+            if (!targetUri.toString().toLowerCase().contains(ML_PACKAGE.toLowerCase()) ||
+                    !targetUri.toString().toLowerCase().contains(TARGET_PATH.toLowerCase())) {
+
+                DocumentFile mlDir = navigateToTargetDirectory(directory, ML_PACKAGE, TARGET_PATH);
+                if (mlDir != null) {
+                    directory = mlDir;
+                    output.append("Successfully navigated to target directory\n\n");
+                } else {
+                    output.append("Could not navigate to exact target directory, showing contents of selected directory\n\n");
+                }
+            }
+
+            DocumentFile[] files = directory.listFiles();
+            if (files.length == 0) {
+                output.append("Directory is empty");
+                return;
+            }
+
+            output.append("Files in directory:\n");
+            for (DocumentFile file : files) {
+                String type = file.isDirectory() ? "[DIR] " : "[FILE] ";
+                output.append(type).append(file.getName()).append("\n");
+            }
+
+            Toast.makeText(this, "Successfully accessed files", Toast.LENGTH_SHORT).show();
+
+        } catch (Exception e) {
+            output.append("Error accessing files: ").append(e.getMessage());
         }
-
-        for (DocumentFile file : files) {
-            fileList.append("- ").append(file.getName()).append("\n");
-        }
-
-        statusTextView.setText(fileList.toString());
-        Toast.makeText(this, "Successfully accessed files", Toast.LENGTH_SHORT).show();
     }
 
     public boolean writeToFile(DocumentFile directory, String filename, byte[] data) {

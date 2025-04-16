@@ -23,29 +23,61 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:text="This app needs permission to access Mobile Legends files in Android/data folder"
+        android:text="This app needs permission to access Mobile Legends files in Android/data folder. Choose one of the permission methods below:"
         app:layout_constraintTop_toBottomOf="@id/titleTextView"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
+
+    <Button
+        android:id="@+id/allFilesAccessButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="1. Request All Files Access (Recommended)"
+        android:textAllCaps="false"
+        app:layout_constraintTop_toBottomOf="@id/descriptionTextView"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <TextView
+        android:id="@+id/allFilesDescription"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="For Android 11+ (especially Android 14). Opens settings to grant full access."
+        android:textSize="12sp"
+        app:layout_constraintTop_toBottomOf="@id/allFilesAccessButton"
+        app:layout_constraintStart_toStartOf="parent" />
 
     <Button
         android:id="@+id/requestButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:text="Request Permission"
-        app:layout_constraintTop_toBottomOf="@id/descriptionTextView"
+        android:text="2. Request SAF Permission"
+        android:textAllCaps="false"
+        app:layout_constraintTop_toBottomOf="@id/allFilesDescription"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
+
+    <TextView
+        android:id="@+id/safDescription"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Navigate to Android/data/com.mobile.legends/files/dragon2017/assets"
+        android:textSize="12sp"
+        app:layout_constraintTop_toBottomOf="@id/requestButton"
+        app:layout_constraintStart_toStartOf="parent" />
 
     <Button
         android:id="@+id/accessButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="16dp"
         android:enabled="false"
         android:text="Access Files"
-        app:layout_constraintTop_toBottomOf="@id/requestButton"
+        app:layout_constraintTop_toBottomOf="@id/safDescription"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
@@ -62,8 +94,8 @@
             android:id="@+id/statusTextView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Status: Not initialized"
-            android:textSize="16sp" />
+            android:text="Status: Please grant permissions to access Mobile Legends files"
+            android:textSize="14sp" />
     </ScrollView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
