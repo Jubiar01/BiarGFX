@@ -75,7 +75,8 @@ public class MainActivity extends AppCompatActivity {
         if (hasAllFilesAccessPermission()) {
             statusTextView.setText("All Files Access permission granted. You can access all files.");
             allFilesAccessButton.setEnabled(false);
-            requestButton.setEnabled(false);
+            // Keep SAF button enabled as fallback for Android 14
+            requestButton.setEnabled(true);
             accessButton.setEnabled(true);
             return;
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -182,7 +183,6 @@ public class MainActivity extends AppCompatActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent.putExtra("android.provider.extra.INITIAL_URI", buildAndroidDataUri());
         }
-
         // For Android 10 and 11, attempt to set initial URI
         else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             Uri initialUri = buildAndroidDataUri();
@@ -340,14 +340,74 @@ public class MainActivity extends AppCompatActivity {
     private void accessFiles() {
         StringBuilder output = new StringBuilder();
 
-        // If we have All Files Access, use direct file access
+        // If we have All Files Access, try direct file access first
         if (hasAllFilesAccessPermission()) {
-            output.append("Using All Files Access permission\n\n");
-            accessWithAllFilesPermission(output);
+            output.append("Trying with All Files Access permission\n\n");
+            try {
+                String directPath = getMLDirectPath();
+                output.append("Path: ").append(directPath).append("\n");
+
+                File directory = new File(directPath);
+                if (!directory.exists()) {
+                    output.append("Directory does not exist using direct path. Trying alternative paths...\n");
+
+                    // Try alternative paths for Android 14
+                    String[] alternativePaths = {
+                            Environment.getExternalStorageDirectory().getPath() + "/Android/data/" + ML_PACKAGE + "/" + TARGET_PATH,
+                            "/storage/emulated/0/Android/data/" + ML_PACKAGE + "/" + TARGET_PATH,
+                            "/sdcard/Android/data/" + ML_PACKAGE + "/" + TARGET_PATH
+                    };
+
+                    boolean found = false;
+                    for (String path : alternativePaths) {
+                        directory = new File(path);
+                        output.append("Trying path: ").append(path).append("\n");
+                        if (directory.exists()) {
+                            output.append("Found directory at: ").append(path).append("\n");
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (!found) {
+                        output.append("Could not find directory with direct access, falling back to SAF.\n\n");
+                        accessWithSafPermission(output);
+                        return;
+                    }
+                }
+
+                if (!directory.canRead()) {
+                    output.append("Cannot read directory: Permission denied\n");
+                    output.append("Falling back to SAF...\n\n");
+                    accessWithSafPermission(output);
+                    return;
+                }
+
+                File[] files = directory.listFiles();
+                if (files == null || files.length == 0) {
+                    output.append("Directory is empty or cannot list files\n");
+                    output.append("Falling back to SAF...\n\n");
+                    accessWithSafPermission(output);
+                    return;
+                }
+
+                output.append("Successfully accessed directory!\n");
+                output.append("Files in directory:\n");
+                for (File file : files) {
+                    String type = file.isDirectory() ? "[DIR] " : "[FILE] ";
+                    output.append(type).append(file.getName()).append("\n");
+                }
+
+                Toast.makeText(this, "Successfully accessed files", Toast.LENGTH_SHORT).show();
+
+            } catch (Exception e) {
+                output.append("Error accessing files: ").append(e.getMessage()).append("\n");
+                output.append("Falling back to SAF...\n\n");
+                accessWithSafPermission(output);
+            }
         }
         // Otherwise use SAF
         else if (targetUri != null) {
-            output.append("Using SAF permission\n\n");
             accessWithSafPermission(output);
         }
         else {
@@ -357,45 +417,40 @@ public class MainActivity extends AppCompatActivity {
         statusTextView.setText(output.toString());
     }
 
-    private void accessWithAllFilesPermission(StringBuilder output) {
-        try {
-            // Direct path to ML directory
-            String directPath = Environment.getExternalStorageDirectory().getPath()
-                    + "/Android/data/" + ML_PACKAGE + "/" + TARGET_PATH;
-
-            File directory = new File(directPath);
-
-            if (!directory.exists()) {
-                output.append("Directory does not exist: ").append(directPath);
-                return;
-            }
-
-            if (!directory.canRead()) {
-                output.append("Cannot read directory: ").append(directPath);
-                return;
-            }
-
-            File[] files = directory.listFiles();
-            if (files == null || files.length == 0) {
-                output.append("Directory is empty or cannot list files");
-                return;
-            }
-
-            output.append("Files in directory:\n");
-            for (File file : files) {
-                String type = file.isDirectory() ? "[DIR] " : "[FILE] ";
-                output.append(type).append(file.getName()).append("\n");
-            }
-
-            Toast.makeText(this, "Successfully accessed files", Toast.LENGTH_SHORT).show();
-
-        } catch (Exception e) {
-            output.append("Error accessing files: ").append(e.getMessage());
+    private String getMLDirectPath() {
+        // For Android 14, try multiple path formats
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            return "/storage/emulated/0/Android/data/" + ML_PACKAGE + "/" + TARGET_PATH;
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return Environment.getExternalStorageDirectory().getPath() +
+                    "/Android/data/" + ML_PACKAGE + "/" + TARGET_PATH;
+        } else {
+            return Environment.getExternalStorageDirectory().getPath() +
+                    "/Android/data/" + ML_PACKAGE + "/" + TARGET_PATH;
         }
     }
 
     private void accessWithSafPermission(StringBuilder output) {
         try {
+            output.append("Using SAF permission\n\n");
+
+            if (targetUri == null) {
+                // Check if we have any SAF permissions that might work
+                List<UriPermission> permissions = getContentResolver().getPersistedUriPermissions();
+                for (UriPermission permission : permissions) {
+                    if (permission.isReadPermission() && permission.isWritePermission()) {
+                        targetUri = permission.getUri();
+                        output.append("Found potential SAF permission: ").append(targetUri).append("\n");
+                        break;
+                    }
+                }
+
+                if (targetUri == null) {
+                    output.append("No SAF permissions available. Please request SAF permission first.");
+                    return;
+                }
+            }
+
             DocumentFile directory = DocumentFile.fromTreeUri(this, targetUri);
 
             if (directory == null) {
@@ -417,6 +472,7 @@ public class MainActivity extends AppCompatActivity {
             if (!targetUri.toString().toLowerCase().contains(ML_PACKAGE.toLowerCase()) ||
                     !targetUri.toString().toLowerCase().contains(TARGET_PATH.toLowerCase())) {
 
+                output.append("Navigating to target directory...\n");
                 DocumentFile mlDir = navigateToTargetDirectory(directory, ML_PACKAGE, TARGET_PATH);
                 if (mlDir != null) {
                     directory = mlDir;
