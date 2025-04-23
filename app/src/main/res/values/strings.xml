@@ -1,6 +1,6 @@
 <resources>
     <!-- App Name -->
-    <string name="app_name">Facebook Login</string>
+    <string name="app_name">FacebookLogin</string>
 
     <!-- Login Activity -->
     <string name="login_title">Facebook Login</string>
