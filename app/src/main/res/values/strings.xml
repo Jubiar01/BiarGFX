@@ -1,3 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">BiarGFX</string>
+    <string name="app_name">Facebook Login</string>
+    <string name="hint_email">Email</string>
+    <string name="hint_password">Password</string>
+    <string name="action_login">Log In</string>
+    <string name="action_logout">Log Out</string>
+    <string name="error_empty_email">Please enter your email</string>
+    <string name="error_empty_password">Please enter your password</string>
+    <string name="login_success">Login successful!</string>
+    <string name="login_failed">Login failed. Please check your credentials.</string>
+    <string name="welcome_message">Welcome back, %1$s!</string>
+    <string name="logout_success">Logged out successfully</string>
+    <string name="session_info">Device: %1$s\nAccount: %2$s</string>
+    <string name="timestamp_info">Session ID: %1$s\nTimestamp: %2$s</string>
 </resources>
