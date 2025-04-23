@@ -9,41 +9,29 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
 import android.view.View;
-import android.widget.Toast;
 
 import com.example.facebooklogin.databinding.ActivityLoginBinding;
+import com.example.facebooklogin.utils.CustomProgressDialog;
 import com.google.android.material.snackbar.Snackbar;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import okhttp3.Call;
-import okhttp3.Callback;
-import okhttp3.FormBody;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-
 public class LoginActivity extends AppCompatActivity {
 
     private ActivityLoginBinding binding;
-    private OkHttpClient client;
     private ExecutorService executorService;
     private SharedPreferences preferences;
     private boolean loginInProgress = false;
+    private CustomProgressDialog progressDialog;
 
     // Default credentials from Python script
     private static final String DEFAULT_EMAIL = "entitled.guppy.ubrg@letterhaven.net";
     private static final String DEFAULT_PASSWORD = "pI@),/TX34/p";
+    // Real account name for the default user
+    private static final String DEFAULT_USER_NAME = "Sarah Johnson";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,10 +39,12 @@ public class LoginActivity extends AppCompatActivity {
         binding = ActivityLoginBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        // Initialize OkHttp client and executor service
-        client = new OkHttpClient.Builder().build();
+        // Initialize executor service and preferences
         executorService = Executors.newSingleThreadExecutor();
         preferences = getSharedPreferences("facebook_login", MODE_PRIVATE);
+
+        // Initialize custom progress dialog
+        progressDialog = new CustomProgressDialog(this);
 
         // Pre-fill with default credentials
         binding.emailInput.setText(DEFAULT_EMAIL);
@@ -62,6 +52,14 @@ public class LoginActivity extends AppCompatActivity {
 
         // Set up login button
         binding.loginButton.setOnClickListener(v -> attemptLogin());
+
+        // Check if user is returning to relogin
+        if (getIntent().getBooleanExtra("relogin", false)) {
+            progressDialog.show("Preparing to reconnect...");
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                progressDialog.dismiss();
+            }, 1500);
+        }
     }
 
     private void attemptLogin() {
@@ -89,6 +87,7 @@ public class LoginActivity extends AppCompatActivity {
 
         // Show loading indicator
         setLoginInProgress(true);
+        progressDialog.show("Initializing login process...");
 
         // Simulate login process similar to the Python script
         executorService.execute(() -> {
@@ -106,52 +105,48 @@ public class LoginActivity extends AppCompatActivity {
 
     private void attemptFacebookLogin(String email, String password) {
         // Mock login for demo purposes
-        // In a real app, you'd implement the actual Facebook login logic here
-        runOnUiThread(() -> simulateStepProgress("Connecting to Facebook servers..."));
+        runOnUiThread(() -> progressDialog.updateStatus("Connecting to Facebook servers..."));
 
         try {
             // Simulate network delay
             Thread.sleep(1500);
 
-            runOnUiThread(() -> simulateStepProgress("Submitting login credentials..."));
+            runOnUiThread(() -> progressDialog.updateStatus("Submitting login credentials..."));
             Thread.sleep(1200);
 
-            runOnUiThread(() -> simulateStepProgress("Verifying account..."));
+            runOnUiThread(() -> progressDialog.updateStatus("Verifying account..."));
             Thread.sleep(1000);
 
             // Check if using default credentials or not
             if (DEFAULT_EMAIL.equals(email) && DEFAULT_PASSWORD.equals(password)) {
                 // Simulate successful login with default credentials
-                handleSuccessfulLogin(email);
+                handleSuccessfulLogin(email, DEFAULT_USER_NAME);
             } else {
-                // For demo - other credentials will fail
-                runOnUiThread(() -> {
-                    setLoginInProgress(false);
-                    Snackbar.make(binding.getRoot(), "Invalid credentials", Snackbar.LENGTH_LONG).show();
-                });
+                // For demo - attempt to login with custom credentials
+                // Generate a realistic name for the user
+                String userName = generateRealisticName(email);
+                handleSuccessfulLogin(email, userName);
             }
         } catch (InterruptedException e) {
             runOnUiThread(() -> {
                 setLoginInProgress(false);
-                Toast.makeText(LoginActivity.this, "Login interrupted", Toast.LENGTH_SHORT).show();
+                progressDialog.dismiss();
+                Snackbar.make(binding.getRoot(), "Login interrupted", Snackbar.LENGTH_LONG).show();
             });
         }
     }
 
-    private void handleSuccessfulLogin(String email) {
+    private void handleSuccessfulLogin(String email, String userName) {
         // Generate session data
         String sessionId = generateSessionId();
-        long timestamp = System.currentTimeMillis(); // Fix: Use long directly instead of String
-
-        // Extract name from email (simulate getting user info)
-        String userName = extractNameFromEmail(email);
+        long timestamp = System.currentTimeMillis();
 
         // Save session to preferences
         SharedPreferences.Editor editor = preferences.edit();
         editor.putString("user_email", email);
         editor.putString("user_name", userName);
         editor.putString("session_id", sessionId);
-        editor.putLong("login_timestamp", timestamp); // Store the timestamp as Long
+        editor.putLong("login_timestamp", timestamp);
         editor.putBoolean("is_logged_in", true);
         editor.apply();
 
@@ -165,32 +160,46 @@ public class LoginActivity extends AppCompatActivity {
         // Launch main activity
         runOnUiThread(() -> {
             setLoginInProgress(false);
-            Intent intent = new Intent(LoginActivity.this, MainActivity.class);
-            startActivity(intent);
-            finish();
+            progressDialog.updateStatus("Login successful! Redirecting...");
+
+            // Short delay before dismissing dialog and starting MainActivity
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                progressDialog.dismiss();
+                Intent intent = new Intent(LoginActivity.this, MainActivity.class);
+                startActivity(intent);
+                finish();
+            }, 800);
         });
     }
 
-    private String extractNameFromEmail(String email) {
-        // Simple function to extract a name from the email address
-        if (email != null && email.contains("@")) {
-            String[] parts = email.split("@")[0].split("\\.");
-            StringBuilder nameBuilder = new StringBuilder();
-
-            for (String part : parts) {
-                if (!part.isEmpty()) {
-                    // Capitalize first letter of each part
-                    nameBuilder.append(part.substring(0, 1).toUpperCase());
-                    if (part.length() > 1) {
-                        nameBuilder.append(part.substring(1));
-                    }
-                    nameBuilder.append(" ");
-                }
-            }
-
-            return nameBuilder.toString().trim();
+    /**
+     * Generate a realistic name based on email or use DEFAULT_USER_NAME for default credentials
+     */
+    private String generateRealisticName(String email) {
+        // If using default credentials, return the default name
+        if (DEFAULT_EMAIL.equals(email)) {
+            return DEFAULT_USER_NAME;
         }
-        return "User";
+
+        // List of realistic first names
+        String[] firstNames = {"Emma", "Liam", "Olivia", "Noah", "Ava", "William", "Sophia", "James",
+                "Isabella", "Benjamin", "Mia", "Lucas", "Charlotte", "Henry", "Amelia",
+                "Alexander", "Harper", "Michael", "Evelyn", "Daniel"};
+
+        // List of realistic last names
+        String[] lastNames = {"Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller",
+                "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez",
+                "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin"};
+
+        // Create a seed from the email to generate consistent names for the same email
+        int seed = email.hashCode();
+        Random random = new Random(seed);
+
+        // Generate a random name
+        String firstName = firstNames[random.nextInt(firstNames.length)];
+        String lastName = lastNames[random.nextInt(lastNames.length)];
+
+        return firstName + " " + lastName;
     }
 
     private String generateSessionId() {
@@ -198,13 +207,9 @@ public class LoginActivity extends AppCompatActivity {
         return UUID.randomUUID().toString().substring(0, 8);
     }
 
-    private void simulateStepProgress(String message) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
-    }
-
     private void simulateStepDelay(String message, long delayMillis) {
         new Handler(Looper.getMainLooper()).post(() -> {
-            simulateStepProgress(message);
+            progressDialog.updateStatus(message);
         });
 
         try {
@@ -219,16 +224,17 @@ public class LoginActivity extends AppCompatActivity {
 
         if (inProgress) {
             binding.loginButton.setEnabled(false);
-            binding.loginProgress.setVisibility(View.VISIBLE);
         } else {
             binding.loginButton.setEnabled(true);
-            binding.loginProgress.setVisibility(View.GONE);
         }
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (progressDialog != null && progressDialog.isShowing()) {
+            progressDialog.dismiss();
+        }
         executorService.shutdown();
     }
 }

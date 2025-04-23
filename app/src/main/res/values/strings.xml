@@ -1,16 +1,23 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- App Name -->
     <string name="app_name">Facebook Login</string>
-    <string name="hint_email">Email</string>
+
+    <!-- Login Activity -->
+    <string name="login_title">Facebook Login</string>
+    <string name="hint_email">Email or Phone Number</string>
     <string name="hint_password">Password</string>
-    <string name="action_login">Log In</string>
-    <string name="action_logout">Log Out</string>
-    <string name="error_empty_email">Please enter your email</string>
-    <string name="error_empty_password">Please enter your password</string>
-    <string name="login_success">Login successful!</string>
-    <string name="login_failed">Login failed. Please check your credentials.</string>
+    <string name="btn_login">Log In</string>
+
+    <!-- Main Activity -->
     <string name="welcome_message">Welcome back, %1$s!</string>
-    <string name="logout_success">Logged out successfully</string>
-    <string name="session_info">Device: %1$s\nAccount: %2$s</string>
-    <string name="timestamp_info">Session ID: %1$s\nTimestamp: %2$s</string>
+    <string name="account_active">Your account is active</string>
+    <string name="btn_logout">Log Out</string>
+
+    <!-- Progress Messages -->
+    <string name="status_connecting">Connecting to Facebook servers…</string>
+    <string name="status_submitting">Submitting login credentials…</string>
+    <string name="status_verifying">Verifying account…</string>
+    <string name="status_successful">Login successful! Redirecting…</string>
+    <string name="status_reconnect">Preparing to reconnect…</string>
+    <string name="status_logging_out">Logging out…</string>
 </resources>

@@ -46,4 +46,5 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:5.0.0-alpha.14")
     implementation("com.github.bumptech.glide:glide:5.0.0-rc01")
     implementation("com.github.rahatarmanahmed:circularprogressview:2.5.0")
+    implementation("de.hdodenhof:circleimageview:3.1.0")
 }
