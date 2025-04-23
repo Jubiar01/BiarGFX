@@ -4,10 +4,11 @@ import android.app.Dialog;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.view.Gravity;
+import android.view.ViewGroup;
 import android.view.Window;
-import android.widget.TextView;
+import android.view.WindowManager;
 
-import com.example.facebooklogin.R;
 import com.example.facebooklogin.databinding.DialogProgressBinding;
 
 public class CustomProgressDialog {
@@ -27,16 +28,37 @@ public class CustomProgressDialog {
 
         // Set transparent background
         dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+
+        // Set dialog width and gravity
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams();
+        lp.copyFrom(dialog.getWindow().getAttributes());
+        lp.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+        lp.gravity = Gravity.CENTER;
+        dialog.getWindow().setAttributes(lp);
     }
 
     public void show(String status) {
         binding.statusText.setText(status);
+        binding.statusDescription.setText("Please wait while we process your request");
+        dialog.show();
+    }
+
+    public void show(String status, String description) {
+        binding.statusText.setText(status);
+        binding.statusDescription.setText(description);
         dialog.show();
     }
 
     public void updateStatus(String status) {
         if (dialog != null && dialog.isShowing()) {
             binding.statusText.setText(status);
+        }
+    }
+
+    public void updateStatus(String status, String description) {
+        if (dialog != null && dialog.isShowing()) {
+            binding.statusText.setText(status);
+            binding.statusDescription.setText(description);
         }
     }
 
